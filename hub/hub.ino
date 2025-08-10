@@ -3,27 +3,40 @@
 #include <RF24.h>
 #include <SoftwareSerial.h>
 
-// ====== NRF24L01 Setup ======
-RF24 radio(9, 10); // CE, CSN
+// ====== NRF24 Setup ======
+RF24 radio(9, 10); 
 const byte address[6] = "00001";
 
 // ====== ESP-01 Setup ======
 SoftwareSerial esp(7, 8); // RX, TX
-String wifiSSID = "WIFISSID";
-String wifiPASS = "WIFIPASS";
+String wifiSSID = "WIFI_SSID";
+String wifiPASS = "WIFI_PASS";
 
 // Flask Server IP & Port
 String serverIP = "192.100.00.100";
 String serverPort = "5000";
 
-// ====== Node to Zone Mapping ======
+// ====== Node → Zone Mapping ======
+struct NodeZone {
+  const char* node;
+  const char* zone;
+};
+
+NodeZone zones[] = {
+  {"N1", "Living Room"},
+  {"N2", "Garage"},
+  {"N3", "Kitchen"},
+  // Add more nodes here as needed
+};
+
 String mapNodeToZone(const String &nodeID) {
-  if (nodeID == "N1") return "Living Room";
-  if (nodeID == "N2") return "Garage";
-  if (nodeID == "N3") return "Kitchen";
+  for (auto &nz : zones) {
+    if (nodeID == nz.node) return nz.zone;
+  }
   return "Unknown Zone";
 }
 
+// ====== ESP Send Helper ======
 void sendToESP(String cmd, int delayMs) {
   esp.println(cmd);
   delay(delayMs);
@@ -36,7 +49,7 @@ void setup() {
   Serial.begin(9600);
   esp.begin(9600);
 
-  Serial.println("=== Arduino Uno RF Receiver with ESP-01 JSON POST (Motion Only) ===");
+  Serial.println("=== RF Receiver with ESP-01 JSON POST ===");
 
   // NRF24 Init
   radio.begin();
@@ -58,20 +71,19 @@ void loop() {
     String rfMessage = String(text);
     Serial.println("RF Received: " + rfMessage);
 
+    // Parse "N1:1"
     int sepIndex = rfMessage.indexOf(':');
     if (sepIndex > 0) {
       String nodeID = rfMessage.substring(0, sepIndex);
       String motion = rfMessage.substring(sepIndex + 1);
 
-      // Only handle motion detected ("1")
+      // Only process motion detected ("1")
       if (motion == "1") {
         String zone = mapNodeToZone(nodeID);
         String status = "Motion Detected";
 
-        // JSON payload
         String jsonData = "{\"node\":\"" + nodeID + "\",\"zone\":\"" + zone + "\",\"status\":\"" + status + "\"}";
 
-        // HTTP POST Request
         String postRequest =
           "POST /alert HTTP/1.1\r\n"
           "Host: " + serverIP + ":" + serverPort + "\r\n"
@@ -80,7 +92,6 @@ void loop() {
           "Connection: close\r\n"
           "\r\n" + jsonData;
 
-        // Send via ESP-01
         sendToESP("AT+CIPSTART=\"TCP\",\"" + serverIP + "\"," + serverPort, 2000);
         sendToESP("AT+CIPSEND=" + String(postRequest.length()), 1000);
         esp.print(postRequest);
