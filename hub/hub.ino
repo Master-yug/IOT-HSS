@@ -9,11 +9,11 @@ const byte address[6] = "00001";
 
 // ====== ESP-01 Setup ======
 SoftwareSerial esp(7, 8); // RX, TX
-String wifiSSID = "Chaudhari";
-String wifiPASS = "9632899161";
+String wifiSSID = "WIFISSID";
+String wifiPASS = "WIFIPASS";
 
 // Flask Server IP & Port
-String serverIP = "192.168.68.107";
+String serverIP = "192.100.00.100";
 String serverPort = "5000";
 
 // ====== Node to Zone Mapping ======
