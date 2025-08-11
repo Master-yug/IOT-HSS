@@ -2,7 +2,7 @@
 
 ---
 
-## 📌 Overview
+## Overview
 The **IOT-HSS** is an end-to-end setup that detects and reports safety-related events (e.g., fire, motion, gas leak) from **hardware sensors** to a **cloud-hosted dashboard**.
 - Hardware sensors + ESP-01 module send alerts to a **local server**.
 - Local server formats data and sends it to **Firebase Firestore**.
@@ -11,7 +11,14 @@ The **IOT-HSS** is an end-to-end setup that detects and reports safety-related e
 
 ---
 
-## 🛠 System Architecture
+## Images
+<img src="https://github.com/user-attachments/assets/1fca46f2-b05a-4db7-a75d-b7191bc41277" width="385px" allign="left">
+<img src="https://github.com/user-attachments/assets/0cfdd7d1-a1a3-4f25-a3b6-0e98b8be3fa8" width="385px" allign="center">
+<img src="https://github.com/user-attachments/assets/81867328-59ea-4803-ac3d-2d8e7ad44b1d" width="385px" allign="right">
+
+---
+
+## System Architecture
 [ Sensors ] --> [ ESP-01 ] --> [ Local Server ] --> [ Firebase Firestore ] --> [ Firebase Hosting Dashboard ]
 
 ---
