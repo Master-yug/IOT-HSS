@@ -1,138 +1,126 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>HSS Dashboard</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f0f0f0;
-      margin: 0;
-      padding: 0;
-    }
-    header {
-      background: #2196F3;
-      color: white;
-      padding: 10px;
-      text-align: center;
-    }
-    .container {
-      max-width: 900px;
-      margin: 20px auto;
-      background: white;
-      padding: 20px;
-      border-radius: 5px;
-    }
-    .alert {
-      border-bottom: 1px solid #ddd;
-      padding: 10px 0;
-    }
-    .alert:last-child {
-      border-bottom: none;
-    }
-    .timestamp {
-      color: gray;
-      font-size: 0.9em;
-    }
-    button {
-      background: #f44336;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #d32f2f;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>HSS Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
-  <header>
-    <h1>HSS Dashboard</h1>
-    <button id="logoutBtn">Logout</button>
-  </header>
-  <div class="container">
-    <h2>Alerts</h2>
-    <div id="alerts">Loading alerts...</div>
-  </div>
+    <div class="header">
+        <h1>HSS Dashboard</h1>
+        <button id="logoutBtn" class="logout-btn">Logout</button>
+    </div>
+    <div class="container">
+        <h2>Alerts</h2>
+        <div id="alerts"></div>
+    </div>
 
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script>
+        // Firebase configuration (replace with your actual config)
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
 
-  <script>
-    // Firebase configuration
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "ABCD.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "XYZ.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
 
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-
-    // Authentication check
-    auth.onAuthStateChanged(user => {
-      if (!user) {
-        window.location.href = "login.html";
-      } else {
-        loadAlerts();
-      }
-    });
-
-    // Logout
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-      auth.signOut().then(() => {
-        window.location.href = "login.html";
-      });
-    });
-
-    // Load alerts
-    function loadAlerts() {
-      const alertsDiv = document.getElementById("alerts");
-      db.collection("alerts").orderBy("timestamp", "desc").onSnapshot(snapshot => {
-        alertsDiv.innerHTML = "";
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          let ts;
-
-          if (data.timestamp?.toDate) {
-            ts = data.timestamp.toDate();
-          } else if (data.timestamp?.seconds) {
-            ts = new Date(data.timestamp.seconds * 1000);
-          } else if (typeof data.timestamp === "number") {
-            ts = data.timestamp > 10000000000
-              ? new Date(data.timestamp)   // ms
-              : new Date(data.timestamp * 1000); // sec
-          } else {
-            ts = new Date(); // fallback
-          }
-
-          const alertHTML = `
-            <div class="alert">
-              <strong>${data.zone || "Unknown Zone"}</strong> - ${data.status || "No Status"}
-              <div class="timestamp">${ts.toLocaleString()}</div>
-            </div>
-          `;
-          alertsDiv.innerHTML += alertHTML;
+        // Protect route - redirect to login if not signed in
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                window.location.href = "login.html";
+            }
         });
 
-        if (snapshot.empty) {
-          alertsDiv.innerHTML = "<p>No alerts found.</p>";
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            auth.signOut();
+        });
+
+        // Load alerts with proper timestamp handling
+        db.collection("alerts")
+            .orderBy("timestamp", "desc")
+            .onSnapshot(snapshot => {
+                const alertsDiv = document.getElementById("alerts");
+                alertsDiv.innerHTML = "";
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    let timeString = "No timestamp";
+
+                    if (data.timestamp) {
+                        // If Firestore Timestamp instance
+                        if (typeof data.timestamp.toDate === "function") {
+                            timeString = data.timestamp.toDate().toLocaleString();
+                        }
+                        // If it's a Firestore timestamp object with seconds/nanoseconds
+                        else if (data.timestamp.seconds) {
+                            timeString = new Date(data.timestamp.seconds * 1000).toLocaleString();
+                        }
+                        // If it's already a Date string
+                        else if (typeof data.timestamp === "string" || typeof data.timestamp === "number") {
+                            timeString = new Date(data.timestamp).toLocaleString();
+                        }
+                    }
+
+                    alertsDiv.innerHTML += `
+                        <div class="alert-item">
+                            <strong>${data.zone || "Unknown Zone"}</strong> - ${data.status || "No Status"}
+                            <br>
+                            <small>${timeString}</small>
+                        </div>
+                        <hr>
+                    `;
+                });
+            });
+    </script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
         }
-      }, error => {
-        console.error("Error fetching alerts:", error);
-        alertsDiv.innerHTML = `<p style="color:red;">Error loading alerts: ${error.message}</p>`;
-      });
-    }
-  </script>
+        .header {
+            background-color: #2196F3;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            position: relative;
+        }
+        .logout-btn {
+            background-color: #f44336;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            position: absolute;
+            right: 20px;
+            top: 15px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .container {
+            background-color: white;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .alert-item {
+            padding: 5px 0;
+        }
+        hr {
+            border: 0;
+            border-top: 1px solid #ddd;
+        }
+    </style>
 </body>
 </html>
-
