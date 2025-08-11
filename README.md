@@ -77,7 +77,71 @@ The local server:
 - Receives alerts from ESP-01 over HTTP.
 - Sends formatted alerts to Firebase.
 
+## Firebase Setup
+1. Create a Firebase Project
+    Go to Firebase Console.
+    Create a project.
+    Enable Firestore Database (production mode).
+    Enable Authentication → Email/Password.
+    Enable Hosting.
 
+2. Create Firestore Structure
+    Collection: alerts
+
+3. Set Security Rules
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /alerts/{document} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+## Dashboard Deployment (Firebase Hosting)
+Prerequisites
+    Node.js installed.
+    Firebase CLI installed:
+```
+npm install -g firebase-tools
+```
+Logged in:
+```
+    firebase login
+```
+Deployment Steps
+```
+cd firebase_dashboard
+firebase init hosting
+# Select your project, public folder: public, single-page app: no
+firebase deploy
+```
+Your dashboard will be available at:
+
+https://<project-id>.web.app
+
+## Authentication
+    Only pre-approved users can log in.
+    Disable public registration.
+    Add authorized users in Firebase Console → Authentication → Users.
+
+## Data Flow
+   Sensor triggers → ESP-01 sends alert to local server.
+   Local server sends formatted alert to Firestore:
+   ``` {
+         "zone": "Kitchen",
+         "status": "Smoke Detected",
+         "timestamp": <Firestore Timestamp>
+       } 
+   ```
+   Dashboard updates in real-time via Firestore listener.
+
+## Known Limitations
+  
+   ESP-01 cannot send HTTPS requests directly; local server required.
+   Timestamps must be stored as Firestore Timestamp objects for proper ordering.
+   No offline caching — dashboard requires internet connection.
 
 
 
