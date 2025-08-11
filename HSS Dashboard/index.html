@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>HSS Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #2196F3;
+      color: white;
+      padding: 10px;
+      text-align: center;
+    }
+    .container {
+      max-width: 900px;
+      margin: 20px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 5px;
+    }
+    .alert {
+      border-bottom: 1px solid #ddd;
+      padding: 10px 0;
+    }
+    .alert:last-child {
+      border-bottom: none;
+    }
+    .timestamp {
+      color: gray;
+      font-size: 0.9em;
+    }
+    button {
+      background: #f44336;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #d32f2f;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HSS Dashboard</h1>
+    <button id="logoutBtn">Logout</button>
+  </header>
+  <div class="container">
+    <h2>Alerts</h2>
+    <div id="alerts">Loading alerts...</div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "ABCD.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "XYZ.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // Authentication check
+    auth.onAuthStateChanged(user => {
+      if (!user) {
+        window.location.href = "login.html";
+      } else {
+        loadAlerts();
+      }
+    });
+
+    // Logout
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      auth.signOut().then(() => {
+        window.location.href = "login.html";
+      });
+    });
+
+    // Load alerts
+    function loadAlerts() {
+      const alertsDiv = document.getElementById("alerts");
+      db.collection("alerts").orderBy("timestamp", "desc").onSnapshot(snapshot => {
+        alertsDiv.innerHTML = "";
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          let ts;
+
+          if (data.timestamp?.toDate) {
+            ts = data.timestamp.toDate();
+          } else if (data.timestamp?.seconds) {
+            ts = new Date(data.timestamp.seconds * 1000);
+          } else if (typeof data.timestamp === "number") {
+            ts = data.timestamp > 10000000000
+              ? new Date(data.timestamp)   // ms
+              : new Date(data.timestamp * 1000); // sec
+          } else {
+            ts = new Date(); // fallback
+          }
+
+          const alertHTML = `
+            <div class="alert">
+              <strong>${data.zone || "Unknown Zone"}</strong> - ${data.status || "No Status"}
+              <div class="timestamp">${ts.toLocaleString()}</div>
+            </div>
+          `;
+          alertsDiv.innerHTML += alertHTML;
+        });
+
+        if (snapshot.empty) {
+          alertsDiv.innerHTML = "<p>No alerts found.</p>";
+        }
+      }, error => {
+        console.error("Error fetching alerts:", error);
+        alertsDiv.innerHTML = `<p style="color:red;">Error loading alerts: ${error.message}</p>`;
+      });
+    }
+  </script>
+</body>
+</html>
+
