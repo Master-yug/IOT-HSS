@@ -1,102 +1,124 @@
+#include <WiFi.h>
+#include <FirebaseESP32.h>
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
-#include <SoftwareSerial.h>
+#include <time.h>  // For NTP time
 
-// ====== NRF24 Setup ======
-RF24 radio(9, 10); 
+// ---------------- Wi-Fi ----------------
+#define WIFI_SSID     "WIFI_SSID"
+#define WIFI_PASSWORD "WIFI_PASSWORD"
+
+// ---------------- Firebase ----------------
+#define FIREBASE_HOST "FIREBASE_HOST"
+#define FIREBASE_AUTH "FIREBASE_AUTH"
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// ---------------- RF24 ----------------
+RF24 radio(13, 12);  // CE=13, CSN=12
 const byte address[6] = "00001";
 
-// ====== ESP-01 Setup ======
-SoftwareSerial esp(7, 8); // RX, TX
-String wifiSSID = "WIFI_SSID";
-String wifiPASS = "WIFI_PASS";
-
-// Flask Server IP & Port
-String serverIP = "192.100.00.100";
-String serverPort = "5000";
-
-// ====== Node → Zone Mapping ======
-struct NodeZone {
-  const char* node;
-  const char* zone;
-};
-
-NodeZone zones[] = {
-  {"N1", "Living Room"},
-  {"N2", "Garage"},
-  {"N3", "Kitchen"},
-  // Add more nodes here as needed
-};
-
-String mapNodeToZone(const String &nodeID) {
-  for (auto &nz : zones) {
-    if (nodeID == nz.node) return nz.zone;
-  }
-  return "Unknown Zone";
+// ---------------- Node-Zone Mapping ----------------
+String getZone(String nodeId) {
+  if (nodeId == "N1") return "Living Room";
+  if (nodeId == "N2") return "Bedroom";
+  if (nodeId == "N3") return "Kitchen";
+  return "Unknown";
 }
 
-// ====== ESP Send Helper ======
-void sendToESP(String cmd, int delayMs) {
-  esp.println(cmd);
-  delay(delayMs);
-  while (esp.available()) {
-    Serial.write(esp.read());
-  }
+// ---------------- Timestamp ----------------
+String getTimestamp() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return "Unknown";
+  char buf[20];
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(buf);
 }
+
+// ---------------- Timer for printing NTP time ----------------
+unsigned long lastTimePrint = 0;
+const unsigned long printInterval = 30000; // 30 seconds
 
 void setup() {
-  Serial.begin(9600);
-  esp.begin(9600);
+  Serial.begin(115200);
 
-  Serial.println("=== RF Receiver with ESP-01 JSON POST ===");
+  // Connect Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected. IP: " + WiFi.localIP().toString());
 
-  // NRF24 Init
+  // NTP time setup
+  const char* ntpServer = "pool.ntp.org";
+  const long gmtOffset_sec = 19800; // IST +5:30
+  const int daylightOffset_sec = 0;
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  Serial.println("Synchronizing time...");
+  struct tm timeinfo;
+  while(!getLocalTime(&timeinfo)) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println("\nTime synchronized.");
+
+  // Firebase setup
+  config.host = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+  Serial.println("Firebase initialized.");
+
+  // nRF24 setup
   radio.begin();
   radio.openReadingPipe(0, address);
-  radio.setPALevel(RF24_PA_MIN);
+  radio.setPALevel(RF24_PA_LOW);
   radio.startListening();
-
-  // ESP8266 Init
-  sendToESP("AT", 1000);
-  sendToESP("AT+CWMODE=1", 1000);
-  sendToESP("AT+CWJAP=\"" + wifiSSID + "\",\"" + wifiPASS + "\"", 5000);
+  Serial.println("RF24 receiver ready.");
 }
 
 void loop() {
+  // ---------------- Print NTP time periodically ----------------
+  if (millis() - lastTimePrint > printInterval) {
+    Serial.println("Current NTP time: " + getTimestamp());
+    lastTimePrint = millis();
+  }
+
+  // ---------------- RF24 data reception ----------------
   if (radio.available()) {
-    char text[32] = {0};
+    char text[32] = "";
     radio.read(&text, sizeof(text));
 
-    String rfMessage = String(text);
-    Serial.println("RF Received: " + rfMessage);
+    Serial.print("Received raw: ");
+    Serial.println(text);
 
     // Parse "N1:1"
-    int sepIndex = rfMessage.indexOf(':');
-    if (sepIndex > 0) {
-      String nodeID = rfMessage.substring(0, sepIndex);
-      String motion = rfMessage.substring(sepIndex + 1);
+    String payload = String(text);
+    String nodeId = payload.substring(0, payload.indexOf(":"));
+    String statusCode = payload.substring(payload.indexOf(":") + 1);
 
-      // Only process motion detected ("1")
-      if (motion == "1") {
-        String zone = mapNodeToZone(nodeID);
-        String status = "Motion Detected";
+    if (statusCode == "1") {
+      String status = "Motion Detected";
+      String zone = getZone(nodeId);
+      String ts = getTimestamp();
 
-        String jsonData = "{\"node\":\"" + nodeID + "\",\"zone\":\"" + zone + "\",\"status\":\"" + status + "\"}";
+      FirebaseJson json;
+      json.add("node", nodeId);
+      json.add("status", status);
+      json.add("zone", zone);
+      json.add("timestamp", ts);
 
-        String postRequest =
-          "POST /alert HTTP/1.1\r\n"
-          "Host: " + serverIP + ":" + serverPort + "\r\n"
-          "Content-Type: application/json\r\n"
-          "Content-Length: " + String(jsonData.length()) + "\r\n"
-          "Connection: close\r\n"
-          "\r\n" + jsonData;
-
-        sendToESP("AT+CIPSTART=\"TCP\",\"" + serverIP + "\"," + serverPort, 2000);
-        sendToESP("AT+CIPSEND=" + String(postRequest.length()), 1000);
-        esp.print(postRequest);
-        delay(1500);
-        sendToESP("AT+CIPCLOSE", 500);
+      if (Firebase.pushJSON(fbdo, "/detections", json)) {
+        Serial.println("✅ Uploaded to Firebase");
+        Serial.println(fbdo.payload());
+      } else {
+        Serial.print("❌ Firebase error: ");
+        Serial.println(fbdo.errorReason());
       }
     }
   }
