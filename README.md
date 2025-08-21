@@ -97,14 +97,14 @@ The local server:
 
 3. Set Security Rules
 ```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /alerts/{document} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
+ rules_version = '2';
+ service cloud.firestore {
+   match /databases/{database}/documents {
+     match /alerts/{document} {
+       allow read, write: if request.auth != null;
+     }
+   }
+ }
 ```
 ## Dashboard Deployment (Firebase Hosting)
 Prerequisites
